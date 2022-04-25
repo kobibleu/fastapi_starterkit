@@ -15,10 +15,7 @@ class RestEndpoints:
         for endpoint in self.endpoints:
             request = getattr(endpoint, "_request")
             endpoint = functools.partial(endpoint, self)
-            self.router.add_api_route(
-                endpoint=endpoint,
-                **request
-            )
+            self.router.add_api_route(endpoint=endpoint, **request)
 
     @property
     def endpoints(self) -> List[Callable]:

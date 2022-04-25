@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi_starterkit.data.domain.entity import Entity
 from fastapi_starterkit.data.domain.pageable import PageRequest, Page
 from fastapi_starterkit.data.domain.sort import Sort
-from fastapi_starterkit.data.repository.interface import PagingRepository
+from fastapi_starterkit.data.repository.core import PagingRepository
 
 T = TypeVar("T", bound=Entity)
 

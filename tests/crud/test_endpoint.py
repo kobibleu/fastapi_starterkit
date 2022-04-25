@@ -1,4 +1,4 @@
-def test_read_list(client):
+def test_read_all(client):
     res = client.get("/test/?page=1&size=1&sort=id,value.des")
     assert res.status_code == 200
     assert res.json() == {
@@ -31,7 +31,7 @@ def test_post(client):
     assert res.status_code == 422
 
 
-def test_read(client):
+def test_read_one(client):
     res = client.get("/test/1")
     assert res.status_code == 200
     assert res.json() == {"id": 1, "value": "value 1"}
