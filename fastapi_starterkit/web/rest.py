@@ -9,9 +9,10 @@ from fastapi_starterkit.web.schema import PageSchema
 
 
 class RestEndpoints:
+    prefix: str = ""
 
-    def __init__(self, prefix=""):
-        self.router = APIRouter(prefix=prefix)
+    def __init__(self):
+        self.router = APIRouter(prefix=self.prefix)
         for endpoint in self.endpoints:
             request = getattr(endpoint, "_request")
             endpoint = functools.partial(endpoint, self)

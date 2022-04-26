@@ -45,7 +45,7 @@ class CRUDApiDoc:
 class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoints):
     override_api_doc: CRUDApiDoc = CRUDApiDoc()
 
-    def __init__(self, service: CRUDService[MODEL, ID], prefix: str = ""):
+    def __init__(self, service: CRUDService[MODEL, ID]):
         type_args = get_args(self.__class__.__orig_bases__[0])
 
         read_schema_type = type_args[0]
@@ -89,7 +89,7 @@ class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoint
                     typed_parameters.append(p)
             endpoint.__signature__ = signature.replace(parameters=typed_parameters)
 
-        super().__init__(prefix)
+        super().__init__()
         self.service = service
 
     @get("/", status_code=status.HTTP_200_OK)

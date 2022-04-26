@@ -37,9 +37,10 @@ class TestService(CRUDService[TestModel, int]):
 
 
 class TestEndpoint(CRUDEndpoints[TestReadSchema, TestCreateSchema, TestModel, int]):
+    prefix = "/test"
 
     def __init__(self, toto: TestService):
-        super().__init__(toto, prefix="/test")
+        super().__init__(toto)
 
 
 @pytest.fixture
