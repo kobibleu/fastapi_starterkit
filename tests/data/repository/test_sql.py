@@ -43,7 +43,7 @@ async def test_find_all(repo):
 
 
 @pytest.mark.asyncio
-async def test_find_pag(repo):
+async def test_find_page(repo):
     res = await repo.find_page(PageRequest.of_size(2))
     assert len(res.content) == 2
     assert res.total_elements == 3
@@ -71,10 +71,12 @@ async def test_save(repo):
     res = await repo.save(TestModel(value="value 4"))
     assert res.id == 4
     assert res.value == "value 4"
+    assert len(await repo.find_all()) == 4
 
     res.value = "value 5"
     res = await repo.save(res)
     assert res.value == "value 5"
+    assert len(await repo.find_all()) == 4
 
 
 @pytest.mark.asyncio

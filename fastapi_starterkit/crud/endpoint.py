@@ -8,9 +8,10 @@ from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
 from fastapi_starterkit.crud.service import CRUDService, EntityNotFoundError
-from fastapi_starterkit.data.domain.entity import Entity
+from fastapi_starterkit.data.domain.document import Document
 from fastapi_starterkit.data.domain.pageable import PageRequest
 from fastapi_starterkit.data.domain.sort import Sort
+from fastapi_starterkit.utils import validate_type_arg
 from fastapi_starterkit.web.decorator import get, post, put, delete
 from fastapi_starterkit.web.dependencies import pageable_parameters, sort_parameters
 from fastapi_starterkit.web.rest import RestEndpoints
@@ -48,27 +49,15 @@ class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoint
     def __init__(self, service: CRUDService[MODEL, ID]):
         type_args = get_args(self.__class__.__orig_bases__[0])
 
-        read_schema_type = type_args[0]
-        if read_schema_type == READ_SCHEMA:
-            raise ValueError("Missing READ_SCHEMA type")
-        if not issubclass(read_schema_type, BaseModel):
-            raise ValueError(f"Schema type {read_schema_type} is not `pydantic.BaseModel`")
+        self.read_schema = type_args[0]
+        self.create_schema = type_args[1]
+        self.model = type_args[2]
+        self.id = type_args[3]
 
-        create_schema_type = type_args[1]
-        if create_schema_type == CREATE_SCHEMA:
-            raise ValueError("Missing CREATE_SCHEMA type")
-        if not issubclass(create_schema_type, BaseModel):
-            raise ValueError(f"Schema type {create_schema_type} is not `pydantic.BaseModel`")
-
-        self.model_type = type_args[2]
-        if self.model_type == MODEL:
-            raise ValueError("Missing MODEL type")
-        if not issubclass(self.model_type, Entity):
-            raise ValueError(f"Model type {self.model_type} is not `fastapi_starterkit.data.domain.entity.Entity`")
-
-        id_type = type_args[3]
-        if id_type == ID:
-            raise ValueError("Missing ID type")
+        validate_type_arg(self.read_schema, BaseModel)
+        validate_type_arg(self.create_schema, BaseModel)
+        validate_type_arg(self.model)
+        validate_type_arg(self.id)
 
         for endpoint in self.endpoints:
             request: dict = getattr(endpoint, "_request")
@@ -82,9 +71,9 @@ class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoint
             typed_parameters = []
             for p in parameters:
                 if p.annotation == ID:
-                    typed_parameters.append(p.replace(kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=id_type))
+                    typed_parameters.append(p.replace(kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=self.id))
                 elif p.annotation == CREATE_SCHEMA:
-                    typed_parameters.append(p.replace(kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=create_schema_type))
+                    typed_parameters.append(p.replace(kind=inspect.Parameter.POSITIONAL_OR_KEYWORD, annotation=self.create_schema))
                 else:
                     typed_parameters.append(p)
             endpoint.__signature__ = signature.replace(parameters=typed_parameters)
@@ -101,28 +90,29 @@ class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoint
             sort: Optional[Sort] = Depends(sort_parameters),
     ):
         page = await self.service.find_page(page_request, sort)
+        page.content = [self._map_to_schema(m) for m in page.content]
         return self._paginated(page, request, response)
 
     @post("/", status_code=status.HTTP_201_CREATED)
     async def create(self, payload: CREATE_SCHEMA, request: Request, response: Response) -> READ_SCHEMA:
-        data = jsonable_encoder(payload)
-        model = self.model_type(**data)
+        model = self._map_to_model(payload)
         model = await self.service.create(model)
-        return self._created(model, request, response)
+        schema = self._map_to_schema(model)
+        return self._created(schema, request, response)
 
     @get("/{id}", status_code=status.HTTP_200_OK)
     async def read_one(self, id: ID) -> READ_SCHEMA:
         try:
-            return await self.service.find_by_id(id)
+            model = await self.service.find_by_id(id)
+            return self._map_to_schema(model)
         except EntityNotFoundError:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
     @put("/{id}", status_code=status.HTTP_200_OK)
     async def update(self, id: ID, payload: CREATE_SCHEMA) -> READ_SCHEMA:
-        data = jsonable_encoder(payload)
-        model = self.model_type(**data)
+        model = self._map_to_model(payload)
         model = await self.service.update(id, model)
-        return model
+        return self._map_to_schema(model)
 
     @delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
     async def delete(self, id: ID):
@@ -130,3 +120,12 @@ class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoint
             return await self.service.delete(id)
         except EntityNotFoundError:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+
+    def _map_to_model(self, schema: CREATE_SCHEMA) -> MODEL:
+        return self.model(**jsonable_encoder(schema))
+
+    def _map_to_schema(self, model: MODEL) -> READ_SCHEMA:
+        if issubclass(self.model, Document):
+            return self.read_schema(id=str(model.id), **model.dict(exclude={"id"}))
+        else:
+            return self.read_schema(**jsonable_encoder(model))

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from fastapi_starterkit.crud.endpoint import CRUDEndpoints
 from fastapi_starterkit.crud.service import CRUDService
 from fastapi_starterkit.data.domain.entity import Entity
-from fastapi_starterkit.data.repository.sql import AsyncSqlRepository
+from fastapi_starterkit.data.repository.sql import SqlRepository
 
 
 class TestModel(Entity):
@@ -28,7 +28,7 @@ class TestCreateSchema(BaseModel):
     value: str
 
 
-class TestRepo(AsyncSqlRepository[TestModel]):
+class TestRepo(SqlRepository[TestModel]):
     pass
 
 
