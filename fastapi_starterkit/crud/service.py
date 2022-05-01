@@ -51,8 +51,9 @@ class CRUDService(Generic[T, ID]):
         existing_model = await self.repository.find_by_id(id)
         if existing_model is None:
             raise EntityNotFoundError()  # Create instead of not found ?
-        for attr, value in vars(model).items():  # We can also specify attributes method on entity if we want to control that
-            setattr(existing_model, attr, value)
+        for attr, value in vars(model).items():
+            if attr != "id":
+                setattr(existing_model, attr, value)
         return await self.repository.save(existing_model)
 
     async def delete(self, id: ID):
