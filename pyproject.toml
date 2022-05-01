@@ -12,14 +12,14 @@ fastapi = "^0.75"
 uvicorn = { version = "^0.17", extras = [ "standard" ] }
 
 SQLAlchemy = { version = "^1.4", optional = true }
-motor = { version = "^2.5", optional = true }
+motor = { version = "^3.0", optional = true }
 
 [tool.poetry.dev-dependencies]
 pytest = "^7.0"
 pytest-asyncio = "^0.18"
 aiosqlite  = "^0.17"
 requests = "*"
-mongomock-motor = "0.0.6"
+mongomock-motor = "0.0.7"
 
 [tool.poetry.extras]
 sqlalchemy = ["SQLAlchemy"]

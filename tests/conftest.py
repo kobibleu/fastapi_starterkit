@@ -5,7 +5,8 @@ from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 
-from fastapi_starterkit.crud.endpoint import CRUDEndpoints
+from fastapi_starterkit.crud.endpoints import CRUDEndpoints
+from fastapi_starterkit.crud.mapper import BaseMapper
 from fastapi_starterkit.crud.service import CRUDService
 from fastapi_starterkit.data.domain.entity import Entity
 from fastapi_starterkit.data.repository.sql import SqlRepository
@@ -20,9 +21,6 @@ class TestReadSchema(BaseModel):
     id: int
     value: str
 
-    class Config:
-        orm_mode = True
-
 
 class TestCreateSchema(BaseModel):
     value: str
@@ -36,11 +34,12 @@ class TestService(CRUDService[TestModel, int]):
     pass
 
 
-class TestEndpoint(CRUDEndpoints[TestReadSchema, TestCreateSchema, TestModel, int]):
-    prefix = "/test"
+class TestMapper(BaseMapper[TestModel, TestReadSchema, TestCreateSchema]):
+    pass
 
-    def __init__(self, toto: TestService):
-        super().__init__(toto)
+
+class TestEndpoint(CRUDEndpoints[TestReadSchema, TestCreateSchema, int]):
+    prefix = "/test"
 
 
 @pytest.fixture
@@ -69,8 +68,14 @@ def service(repo):
 
 
 @pytest.fixture
-def endpoint(service):
-    endpoint = TestEndpoint(service)
+def mapper():
+    mapper = TestMapper()
+    yield mapper
+
+
+@pytest.fixture
+def endpoint(service, mapper):
+    endpoint = TestEndpoint(service, mapper)
     yield endpoint
 
 

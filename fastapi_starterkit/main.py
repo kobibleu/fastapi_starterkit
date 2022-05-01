@@ -3,7 +3,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String
 
-from fastapi_starterkit.crud.endpoint import CRUDEndpoints, CRUDApiDoc, ApiDoc
+from fastapi_starterkit.crud.endpoints import CRUDEndpoints, CRUDApiDoc, ApiDoc
 from fastapi_starterkit.data.domain.entity import Entity
 from fastapi_starterkit.web.schema import PageSchema
 

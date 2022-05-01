@@ -4,11 +4,10 @@ from enum import Enum
 from typing import TypeVar, Generic, List, get_args, Optional, Type, Any, Union
 
 from fastapi import status, Depends, HTTPException, Response, Request
-from fastapi.encoders import jsonable_encoder
 from pydantic import BaseModel
 
+from fastapi_starterkit.crud.mapper import BaseMapper
 from fastapi_starterkit.crud.service import CRUDService, EntityNotFoundError
-from fastapi_starterkit.data.domain.document import Document
 from fastapi_starterkit.data.domain.pageable import PageRequest
 from fastapi_starterkit.data.domain.sort import Sort
 from fastapi_starterkit.utils import validate_type_arg
@@ -43,20 +42,18 @@ class CRUDApiDoc:
         return self.__dict__.get(func_name)
 
 
-class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoints):
+class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, ID], RestEndpoints):
     override_api_doc: CRUDApiDoc = CRUDApiDoc()
 
-    def __init__(self, service: CRUDService[MODEL, ID]):
+    def __init__(self, service: CRUDService[MODEL, ID], mapper: BaseMapper[MODEL, READ_SCHEMA, CREATE_SCHEMA]):
         type_args = get_args(self.__class__.__orig_bases__[0])
 
         self.read_schema = type_args[0]
         self.create_schema = type_args[1]
-        self.model = type_args[2]
-        self.id = type_args[3]
+        self.id = type_args[2]
 
         validate_type_arg(self.read_schema, BaseModel)
         validate_type_arg(self.create_schema, BaseModel)
-        validate_type_arg(self.model)
         validate_type_arg(self.id)
 
         for endpoint in self.endpoints:
@@ -80,6 +77,7 @@ class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoint
 
         super().__init__()
         self.service = service
+        self.mapper = mapper
 
     @get("/", status_code=status.HTTP_200_OK)
     async def read_all(
@@ -90,29 +88,29 @@ class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoint
             sort: Optional[Sort] = Depends(sort_parameters),
     ):
         page = await self.service.find_page(page_request, sort)
-        page.content = [self._map_to_schema(m) for m in page.content]
+        page.content = [self.mapper.map_to_read_schema(m) for m in page.content]
         return self._paginated(page, request, response)
 
     @post("/", status_code=status.HTTP_201_CREATED)
     async def create(self, payload: CREATE_SCHEMA, request: Request, response: Response) -> READ_SCHEMA:
-        model = self._map_to_model(payload)
+        model = self.mapper.map_to_model(payload)
         model = await self.service.create(model)
-        schema = self._map_to_schema(model)
+        schema = self.mapper.map_to_read_schema(model)
         return self._created(schema, request, response)
 
     @get("/{id}", status_code=status.HTTP_200_OK)
     async def read_one(self, id: ID) -> READ_SCHEMA:
         try:
             model = await self.service.find_by_id(id)
-            return self._map_to_schema(model)
+            return self.mapper.map_to_read_schema(model)
         except EntityNotFoundError:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
 
     @put("/{id}", status_code=status.HTTP_200_OK)
     async def update(self, id: ID, payload: CREATE_SCHEMA) -> READ_SCHEMA:
-        model = self._map_to_model(payload)
+        model = self.mapper.map_to_model(payload)
         model = await self.service.update(id, model)
-        return self._map_to_schema(model)
+        return self.mapper.map_to_read_schema(model)
 
     @delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
     async def delete(self, id: ID):
@@ -120,12 +118,3 @@ class CRUDEndpoints(Generic[READ_SCHEMA, CREATE_SCHEMA, MODEL, ID], RestEndpoint
             return await self.service.delete(id)
         except EntityNotFoundError:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-
-    def _map_to_model(self, schema: CREATE_SCHEMA) -> MODEL:
-        return self.model(**jsonable_encoder(schema))
-
-    def _map_to_schema(self, model: MODEL) -> READ_SCHEMA:
-        if issubclass(self.model, Document):
-            return self.read_schema(id=str(model.id), **model.dict(exclude={"id"}))
-        else:
-            return self.read_schema(**jsonable_encoder(model))
