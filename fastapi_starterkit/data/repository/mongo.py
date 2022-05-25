@@ -11,7 +11,7 @@ from fastapi_starterkit.data.domain.sort import Sort
 from fastapi_starterkit.data.repository.core import PagingRepository
 from fastapi_starterkit.utils import validate_type_arg
 
-T = TypeVar("T")
+T = TypeVar("T", bound=Document)
 
 
 class MongoRepository(Generic[T], PagingRepository):
