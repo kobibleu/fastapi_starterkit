@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from pydantic import BaseModel
 from sqlalchemy import Column, Integer, String
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
+from sqlalchemy.orm import sessionmaker
 
 from fastapi_starterkit.crud.endpoints import CRUDEndpoints
 from fastapi_starterkit.crud.mapper import BaseMapper
@@ -43,16 +44,29 @@ class TestEndpoint(CRUDEndpoints[TestReadSchema, TestCreateSchema, int]):
 
 
 @pytest.fixture
-async def session():
+async def engine():
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    session = AsyncSession(bind=engine)
     async with engine.begin() as conn:
         await conn.run_sync(Entity.metadata.create_all)
-    session.add(TestModel(id=1, value="value 1"))
-    session.add(TestModel(id=2, value="value 2"))
-    session.add(TestModel(id=3, value="value 3"))
-    await session.commit()
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture
+async def session(engine):
+    session = AsyncSession(bind=engine, expire_on_commit=False)
     yield session
+    await session.close()
+
+
+@pytest.fixture
+async def persist_models(session):
+    session.add_all([
+        TestModel(value="value 1"),
+        TestModel(value="value 2"),
+        TestModel(value="value 3")
+    ])
+    await session.commit()
 
 
 @pytest.fixture
@@ -87,6 +101,6 @@ def app(endpoint):
 
 
 @pytest.fixture
-def client(app):
+def client(app, persist_models):
     client = TestClient(app)
     yield client

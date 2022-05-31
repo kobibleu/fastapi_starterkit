@@ -1,8 +1,9 @@
 import asyncio
-from typing import TypeVar, Generic, get_args, Iterable, List, Optional
+from typing import TypeVar, Generic, get_args, Iterable, List, Optional, Any
 
 from sqlalchemy import select, func, delete
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql import Select
 
 from fastapi_starterkit.data.domain.entity import Entity
 from fastapi_starterkit.data.domain.pageable import PageRequest, Page
@@ -29,36 +30,34 @@ class SqlRepository(Generic[T], PagingRepository):
         """
         Returns the number of entities available.
         """
-        stmt = select(func.count()).select_from(self.model)
-        return (await self.session.execute(stmt)).scalar()
+        return await self._scalar(select(func.count(self.model.id)))
 
     async def delete_all(self):
         """
         Deletes all entities.
         """
-        stmt = delete(self.model)
-        await self.session.execute(stmt)
+        await self.session.execute(delete(self.model))
+        await self.session.commit()
 
     async def delete_all_by_id(self, ids: Iterable[id]):
         """
         Deletes all entities with the given IDs.
         """
-        stmt = delete(self.model).where(self.model.id.in_(ids))
-        await self.session.execute(stmt)
+        await self.session.execute(delete(self.model).where(self.model.id.in_(ids)))
+        await self.session.commit()
 
     async def delete_by_id(self, id: int):
         """
         Deletes the entity with the given id.
         """
-        stmt = delete(self.model).where(self.model.id == id)
-        await self.session.execute(stmt)
+        await self.session.execute(delete(self.model).where(self.model.id == id))
+        await self.session.commit()
 
     async def exists_by_id(self, id: int) -> bool:
         """
         Returns whether an entity with the given id exists.
         """
-        stmt = select(func.count()).select_from(self.model).where(self.model.id == id)
-        return bool((await self.session.execute(stmt)).scalar())
+        return (await self._scalar(select(func.count(self.model.id)).where(self.model.id == id))) > 0
 
     async def find_all(self, sort: Sort = None) -> List[T]:
         """
@@ -68,7 +67,7 @@ class SqlRepository(Generic[T], PagingRepository):
         order_by = self._sort_query(sort)
         if order_by:
             stmt = stmt.order_by(*order_by)
-        return (await self.session.execute(stmt)).scalars().all()
+        return await self._all(stmt)
 
     async def find_page(self, page_request: PageRequest, sort: Sort = None) -> Page[T]:
         """
@@ -78,10 +77,10 @@ class SqlRepository(Generic[T], PagingRepository):
         order_by = self._sort_query(sort)
         if order_by:
             stmt = stmt.order_by(*order_by)
-        result = (await self.session.execute(stmt)).scalars().all()
+        content = await self._all(stmt)
         count = await self.count()
         return Page(
-            content=result,
+            content=content,
             page_request=page_request,
             total_elements=count
         )
@@ -90,15 +89,13 @@ class SqlRepository(Generic[T], PagingRepository):
         """
         Returns all entities with the given IDs.
         """
-        stmt = select(self.model).where(self.model.id.in_(ids))
-        return (await self.session.execute(stmt)).scalars().all()
+        return await self._all(select(self.model).where(self.model.id.in_(ids)))
 
     async def find_by_id(self, id: id) -> Optional[T]:
         """
         Returns an entity by its id.
         """
-        stmt = select(self.model).where(self.model.id == id)
-        return (await self.session.execute(stmt)).scalar()
+        return await self._get(id)
 
     async def save(self, model: T) -> T:
         """
@@ -107,7 +104,7 @@ class SqlRepository(Generic[T], PagingRepository):
         if not isinstance(model, Entity):
             raise ValueError(f"type {type(model)} not handled by repository.")
         self.session.add(model)
-        await self.session.flush()
+        await self.session.commit()
         await self.session.refresh(model)
         return model
 
@@ -118,7 +115,7 @@ class SqlRepository(Generic[T], PagingRepository):
         if any(not isinstance(m, Entity) for m in models):
             raise ValueError(f"one of type in the list of model is not handled by repository.")
         self.session.add_all(models)
-        await self.session.flush()
+        await self.session.commit()
         await asyncio.gather(*[self.session.refresh(m) for m in models])
         return list(models)
 
@@ -134,3 +131,21 @@ class SqlRepository(Generic[T], PagingRepository):
             order_by = attr.asc() if order.direction.is_ascending() else attr.desc()
             query.append(order_by)
         return query
+
+    async def _get(self, pk: Any) -> Optional[T]:
+        return await self.session.get(self.model, pk)
+
+    async def _scalar(self, stmt: Select) -> Any:
+        return (await self.session.execute(stmt)).scalar()
+
+    async def _all(self, stmt: Select) -> List[T]:
+        return (await self.session.execute(stmt)).scalars().all()
+
+    async def _first(self, stmt: Select) -> Optional[T]:
+        return (await self.session.execute(stmt)).scalars().first()
+
+    async def _one(self, stmt: Select) -> T:
+        return (await self.session.execute(stmt)).scalars().one()
+
+    async def _one_or_none(self, stmt: Select) -> Optional[T]:
+        return (await self.session.execute(stmt)).scalars().one_or_none()
