@@ -21,45 +21,44 @@ class SqlRepository(Generic[T], PagingRepository):
     T: the type of object handled by the repository, must be `fastapi_starterkit.data.domain.entity.Entity`.
     """
 
-    def __init__(self, session: AsyncSession):
-        self.session = session
+    def __init__(self):
         self.model = get_args(self.__orig_bases__[0])[0]
         validate_type_arg(self.model, Entity)
 
-    async def count(self) -> int:
+    async def count(self, session: AsyncSession) -> int:
         """
         Returns the number of entities available.
         """
-        return await self._scalar(select(func.count(self.model.id)))
+        return await self._scalar(session, select(func.count(self.model.id)))
 
-    async def delete_all(self):
+    async def delete_all(self, session: AsyncSession):
         """
         Deletes all entities.
         """
-        await self.session.execute(delete(self.model))
-        await self.session.commit()
+        await session.execute(delete(self.model))
+        await session.commit()
 
-    async def delete_all_by_id(self, ids: Iterable[id]):
+    async def delete_all_by_id(self, session: AsyncSession, ids: Iterable[id]):
         """
         Deletes all entities with the given IDs.
         """
-        await self.session.execute(delete(self.model).where(self.model.id.in_(ids)))
-        await self.session.commit()
+        await session.execute(delete(self.model).where(self.model.id.in_(ids)))
+        await session.commit()
 
-    async def delete_by_id(self, id: int):
+    async def delete_by_id(self, session: AsyncSession, id: int):
         """
         Deletes the entity with the given id.
         """
-        await self.session.execute(delete(self.model).where(self.model.id == id))
-        await self.session.commit()
+        await session.execute(delete(self.model).where(self.model.id == id))
+        await session.commit()
 
-    async def exists_by_id(self, id: int) -> bool:
+    async def exists_by_id(self, session: AsyncSession, id: int) -> bool:
         """
         Returns whether an entity with the given id exists.
         """
-        return (await self._scalar(select(func.count(self.model.id)).where(self.model.id == id))) > 0
+        return (await self._scalar(session, select(func.count(self.model.id)).where(self.model.id == id))) > 0
 
-    async def find_all(self, sort: Sort = None) -> List[T]:
+    async def find_all(self, session: AsyncSession, sort: Sort = None) -> List[T]:
         """
         Returns all entities sorted by the given options.
         """
@@ -67,9 +66,9 @@ class SqlRepository(Generic[T], PagingRepository):
         order_by = self._sort_query(sort)
         if order_by:
             stmt = stmt.order_by(*order_by)
-        return await self._all(stmt)
+        return await self._all(session, stmt)
 
-    async def find_page(self, page_request: PageRequest, sort: Sort = None) -> Page[T]:
+    async def find_page(self, session: AsyncSession, page_request: PageRequest, sort: Sort = None) -> Page[T]:
         """
         Returns a Page of entities meeting the paging restriction.
         """
@@ -77,46 +76,46 @@ class SqlRepository(Generic[T], PagingRepository):
         order_by = self._sort_query(sort)
         if order_by:
             stmt = stmt.order_by(*order_by)
-        content = await self._all(stmt)
-        count = await self.count()
+        content = await self._all(session, stmt)
+        count = await self.count(session)
         return Page(
             content=content,
             page_request=page_request,
             total_elements=count
         )
 
-    async def find_all_by_id(self, ids: Iterable[id]) -> List[T]:
+    async def find_all_by_id(self, session: AsyncSession, ids: Iterable[id]) -> List[T]:
         """
         Returns all entities with the given IDs.
         """
-        return await self._all(select(self.model).where(self.model.id.in_(ids)))
+        return await self._all(session, select(self.model).where(self.model.id.in_(ids)))
 
-    async def find_by_id(self, id: id) -> Optional[T]:
+    async def find_by_id(self, session: AsyncSession, id: id) -> Optional[T]:
         """
         Returns an entity by its id.
         """
-        return await self._get(id)
+        return await self._get(session, id)
 
-    async def save(self, model: T) -> T:
+    async def save(self, session: AsyncSession, model: T) -> T:
         """
         Saves a given entity.
         """
         if not isinstance(model, Entity):
             raise ValueError(f"type {type(model)} not handled by repository.")
-        self.session.add(model)
-        await self.session.commit()
-        await self.session.refresh(model)
+        session.add(model)
+        await session.commit()
+        await session.refresh(model)
         return model
 
-    async def save_all(self, models: Iterable[T]) -> List[T]:
+    async def save_all(self, session: AsyncSession, models: Iterable[T]) -> List[T]:
         """
         Saves all given entities.
         """
         if any(not isinstance(m, Entity) for m in models):
             raise ValueError(f"one of type in the list of model is not handled by repository.")
-        self.session.add_all(models)
-        await self.session.commit()
-        await asyncio.gather(*[self.session.refresh(m) for m in models])
+        session.add_all(models)
+        await session.commit()
+        await asyncio.gather(*[session.refresh(m) for m in models])
         return list(models)
 
     def _sort_query(self, sort: Sort) -> List[str]:
@@ -132,20 +131,20 @@ class SqlRepository(Generic[T], PagingRepository):
             query.append(order_by)
         return query
 
-    async def _get(self, pk: Any) -> Optional[T]:
-        return await self.session.get(self.model, pk)
+    async def _get(self, session: AsyncSession, pk: Any) -> Optional[T]:
+        return await session.get(self.model, pk)
 
-    async def _scalar(self, stmt: Select) -> Any:
-        return (await self.session.execute(stmt)).scalar()
+    async def _scalar(self, session: AsyncSession, stmt: Select) -> Any:
+        return (await session.execute(stmt)).scalar()
 
-    async def _all(self, stmt: Select) -> List[T]:
-        return (await self.session.execute(stmt)).scalars().all()
+    async def _all(self, session: AsyncSession, stmt: Select) -> List[T]:
+        return (await session.execute(stmt)).scalars().all()
 
-    async def _first(self, stmt: Select) -> Optional[T]:
-        return (await self.session.execute(stmt)).scalars().first()
+    async def _first(self, session: AsyncSession, stmt: Select) -> Optional[T]:
+        return (await session.execute(stmt)).scalars().first()
 
-    async def _one(self, stmt: Select) -> T:
-        return (await self.session.execute(stmt)).scalars().one()
+    async def _one(self, session: AsyncSession, stmt: Select) -> T:
+        return (await session.execute(stmt)).scalars().one()
 
-    async def _one_or_none(self, stmt: Select) -> Optional[T]:
-        return (await self.session.execute(stmt)).scalars().one_or_none()
+    async def _one_or_none(self, session: AsyncSession, stmt: Select) -> Optional[T]:
+        return (await session.execute(stmt)).scalars().one_or_none()

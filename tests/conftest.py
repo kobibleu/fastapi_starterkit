@@ -70,8 +70,8 @@ async def persist_models(session):
 
 
 @pytest.fixture
-def repo(session):
-    repo = TestRepo(session)
+def repo():
+    repo = TestRepo()
     yield repo
 
 
