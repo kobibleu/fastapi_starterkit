@@ -138,13 +138,13 @@ class SqlRepository(Generic[T], PagingRepository):
         return (await session.execute(stmt)).scalar()
 
     async def _all(self, session: AsyncSession, stmt: Select) -> List[T]:
-        return (await session.execute(stmt)).scalars().all()
+        return (await session.execute(stmt)).unique().scalars().all()
 
     async def _first(self, session: AsyncSession, stmt: Select) -> Optional[T]:
-        return (await session.execute(stmt)).scalars().first()
+        return (await session.execute(stmt)).unique().scalars().first()
 
     async def _one(self, session: AsyncSession, stmt: Select) -> T:
-        return (await session.execute(stmt)).scalars().one()
+        return (await session.execute(stmt)).unique().scalars().one()
 
     async def _one_or_none(self, session: AsyncSession, stmt: Select) -> Optional[T]:
-        return (await session.execute(stmt)).scalars().one_or_none()
+        return (await session.execute(stmt)).unique().scalars().one_or_none()
