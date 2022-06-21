@@ -29,7 +29,7 @@ class SqlRepository(Generic[T], PagingRepository):
         """
         Returns the number of entities available.
         """
-        return await self._scalar(session, select(func.count(self.model.id)))
+        return await self._count(session, select(self.model))
 
     async def delete_all(self, session: AsyncSession):
         """
@@ -56,33 +56,19 @@ class SqlRepository(Generic[T], PagingRepository):
         """
         Returns whether an entity with the given id exists.
         """
-        return (await self._scalar(session, select(func.count(self.model.id)).where(self.model.id == id))) > 0
+        return (await self._count(session, select(self.model).where(self.model.id == id))) > 0
 
     async def find_all(self, session: AsyncSession, sort: Sort = None) -> List[T]:
         """
         Returns all entities sorted by the given options.
         """
-        stmt = select(self.model)
-        order_by = self._sort_query(sort)
-        if order_by:
-            stmt = stmt.order_by(*order_by)
-        return await self._all(session, stmt)
+        return await self._all(session, select(self.model), sort)
 
     async def find_page(self, session: AsyncSession, page_request: PageRequest, sort: Sort = None) -> Page[T]:
         """
         Returns a Page of entities meeting the paging restriction.
         """
-        stmt = select(self.model).offset(page_request.offset()).limit(page_request.size)
-        order_by = self._sort_query(sort)
-        if order_by:
-            stmt = stmt.order_by(*order_by)
-        content = await self._all(session, stmt)
-        count = await self.count(session)
-        return Page(
-            content=content,
-            page_request=page_request,
-            total_elements=count
-        )
+        return await self._page(session, select(self.model), page_request)
 
     async def find_all_by_id(self, session: AsyncSession, ids: Iterable[id]) -> List[T]:
         """
@@ -118,26 +104,14 @@ class SqlRepository(Generic[T], PagingRepository):
         await asyncio.gather(*[session.refresh(m) for m in models])
         return list(models)
 
-    def _sort_query(self, sort: Sort) -> List[str]:
-        """
-        Build sqlalchemy sort query.
-        """
-        if sort is None:
-            return []
-        query = []
-        for order in sort.orders:
-            attr = getattr(self.model, order.key)
-            order_by = attr.asc() if order.direction.is_ascending() else attr.desc()
-            query.append(order_by)
-        return query
-
     async def _get(self, session: AsyncSession, pk: Any) -> Optional[T]:
         return await session.get(self.model, pk)
 
     async def _scalar(self, session: AsyncSession, stmt: Select) -> Any:
         return (await session.execute(stmt)).scalar()
 
-    async def _all(self, session: AsyncSession, stmt: Select) -> List[T]:
+    async def _all(self, session: AsyncSession, stmt: Select, sort: Sort = None) -> List[T]:
+        stmt = self._apply_order_by(stmt, sort)
         return (await session.execute(stmt)).unique().scalars().all()
 
     async def _first(self, session: AsyncSession, stmt: Select) -> Optional[T]:
@@ -148,3 +122,27 @@ class SqlRepository(Generic[T], PagingRepository):
 
     async def _one_or_none(self, session: AsyncSession, stmt: Select) -> Optional[T]:
         return (await session.execute(stmt)).unique().scalars().one_or_none()
+
+    async def _count(self, session: AsyncSession, stmt: Select) -> int:
+        count_query = stmt.with_only_columns(func.count(self.model.id))
+        return (await session.execute(count_query)).scalar()
+
+    async def _page(
+            self, session: AsyncSession, stmt: Select, page_request: PageRequest, sort: Optional[Sort] = None
+    ) -> Page[T]:
+        stmt = self._apply_order_by(stmt, sort)
+        count = await self._count(session, stmt.offset(None).limit(None))
+        all = await self._all(session, stmt.offset(page_request.offset()).limit(page_request.size))
+        return Page(content=all, page_request=page_request, total_elements=count)
+
+    def _apply_order_by(self, stmt: Select, sort: Optional[Sort]) -> Select:
+        """
+        Returns a new selectable with the given list of ORDER BY criteria applied.
+        """
+        if sort is None:
+            return stmt
+        clauses = []
+        for order in sort.orders:
+            attr = getattr(self.model, order.key)
+            clauses.append(attr.asc() if order.direction.is_ascending() else attr.desc())
+        return stmt.order_by(*clauses)
